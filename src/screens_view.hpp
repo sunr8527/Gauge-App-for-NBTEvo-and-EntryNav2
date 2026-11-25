@@ -16,8 +16,8 @@ const double kStyleFull = 10.0;      // driving.drivingStyle value of a full bar
 const double kBrakeFullMin = 30.0;   // brakeContact of a full bar until a larger one was seen (0..23 seen standing)
 const double kChartFull = 20.0;      // l/100 km of a full history bar
 
-inline unsigned screenBackground(int s, bool polish) {
-    return ids::kImgScreenBg + 2u * (unsigned)(s - 1) + (polish ? 0u : 1u);
+inline unsigned screenBackground(int s, const Metrics& m) {
+    return ids::kImgScreenBg + 4u * (unsigned)(s - 1) + (unsigned)m.langIndex();
 }
 
 // ---- numbers ----------------------------------------------------------------------------------------------------------
@@ -138,7 +138,7 @@ inline void computePerf(const Metrics& m, const Perf& p, const GMax& gm, long no
     out[kPerfSlotPbrk] = tileNum(p.rBrake >= 0, p.rBrake, comma);
     out[kPerfSlotPq] = tileNum(p.rQuarter >= 0, p.rQuarter / 1000.0, comma);
     PerfStatus s = m.hasSpeed ? p.status() : kPerfNoData;
-    out[kPerfSlotStatus] = kImgStatus + (m.polish() ? 0u : 10u) + (unsigned)s;
+    out[kPerfSlotStatus] = kImgStatus + 10u * (unsigned)m.langIndex() + (unsigned)s;
     out[kPerfSlotLive] = s == kPerfRunning ? tileDec(p.elapsed(now) / 1000.0, comma) : (unsigned)kImgBlank;
     double lat = gm.has[kGLeft] ? gm.v[kGLeft] : 0;
     if (gm.has[kGRight] && gm.v[kGRight] > lat) lat = gm.v[kGRight];
@@ -165,7 +165,7 @@ inline void computeWarm(const Metrics& m, const WarmUp& w, const Settings& st, l
     gaugeCard(out + kWarmSlotCoolantArc, m.hasCoolant, showTemp(st, m.coolant), false, 0,
               showTemp(st, kWarmCoolantLo), showTemp(st, kWarmCoolantHi), unit);
     const WarmStatus s = w.status(m);
-    out[kWarmSlotStatus] = kImgWarmStatus + (m.polish() ? 0u : 10u) + (unsigned)s;
+    out[kWarmSlotStatus] = kImgWarmStatus + 10u * (unsigned)m.langIndex() + (unsigned)s;
     out[kWarmSlotProgress] = s == kWarmReady ? (unsigned)kImgWarmDone : level(kImgWarmProg, w.progress(m), kWarmSteps);
     long mins = w.runMinutes(now);
     out[kWarmSlotRuntime] = w.running ? kImgTileTime + (unsigned)(mins > 599 ? 599 : mins) : (unsigned)kImgTileNone;

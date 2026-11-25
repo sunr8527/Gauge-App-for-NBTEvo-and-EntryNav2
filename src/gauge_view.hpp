@@ -107,23 +107,18 @@ inline unsigned powerUnitImage(const Settings& st, bool polish) {
                             : polish ? ids::kUnitKm : ids::kUnitPs);
 }
 
-// The background (card titles and labels drawn in it) in the HMI's language: Polish or English.
-inline unsigned backgroundFrame(const Metrics& m) { return m.polish() ? ids::kImgBackground : ids::kImgBackgroundEn; }
+// The background (card titles and labels drawn in it) in the HMI's language: Polish, Chinese or English.
+inline unsigned backgroundFrame(const Metrics& m) {
+    if (m.chineseTraditional()) return ids::kImgBackgroundZhTw;
+    if (m.chinese()) return ids::kImgBackgroundZh;
+    return m.polish() ? ids::kImgBackground : ids::kImgBackgroundEn;
+}
 inline unsigned torqueUnitImage(const Settings& st) { return ids::kImgUnit + (st.torque == kLbFt ? ids::kUnitLbFt : ids::kUnitNm); }
 // The fuel unit is its own left-aligned picture: it sits right after the (right-aligned) digits.
 inline unsigned fuelUnitImage(const Settings& st) { return ids::kImgFuelUnit + (st.fuel == kGallon ? 1u : 0u); }
 
-// Smallest end of the power / torque scale in the shown unit (it grows with the recorded maximum).
-inline int powerScaleMin(const Settings& st) { return st.power == kKw ? 100 : 150; }
-inline int torqueScaleMin(const Settings& st) { return st.torque == kLbFt ? 200 : 250; }
-const double kScaleStep = 50;                    // the power / torque scale ends on a multiple of this
-
-// End of a scale: the maximum (shown unit) + 5 %, rounded up to the step, never below the minimum.
-inline int scaleEnd(bool hasMax, double shownMax, int minimum, double step) {
-    if (!hasMax) return minimum;
-    int e = (int)(ceil(shownMax * 1.05 / step) * step);
-    return e > minimum ? e : minimum;
-}
+// Power and torque have a fixed scale top (0..kScalePowerMax / 0..kScaleTorqueMax in the shown unit). The maxima are
+// still shown as the amber marker and the "max" number, clamped to the arc.
 
 // Decimal separator of every number picture: the comma, in every HMI language. make_db.py only draws the comma sets
 // (the decimal-point sets, ids + kSepStride / kDecStride / kBigDecStride, were dropped to keep the packs small).
@@ -198,12 +193,12 @@ inline unsigned markFrame(bool has, double v, double lo, double hi) {
     return arcFrame(true, v, lo, hi) - ids::kImgArc + ids::kImgMark;
 }
 
-// The g-meter dot: one frame per 0.2 g step on each axis, pulled back onto the 2 g circle.
+// The g-meter dot: one frame per 0.1 g step on each axis, pulled back onto the 1 g circle.
 inline unsigned dotFrame(const Metrics& m) {
     if (!m.hasLatG() && !m.hasLonG()) return ids::kImgBlank;
     const int n = ids::kGSteps;
-    double x = m.hasLatG() ? m.latG() * n / 2.0 : 0;   // 2 g = n steps
-    double y = m.hasLonG() ? m.lonG() * n / 2.0 : 0;
+    double x = m.hasLatG() ? m.latG() * n : 0;         // 1 g = n steps
+    double y = m.hasLonG() ? m.lonG() * n : 0;
     double r = sqrt(x * x + y * y);
     if (r > n) { x = x * n / r; y = y * n / r; }
     int ix = n + roundInt(x), iy = n + roundInt(y);
@@ -251,18 +246,10 @@ inline void computeView(const Metrics& m, const Maxima& mx, const Settings& st, 
               tempUnitImage(st));
     gaugeCard(out + kSlotOilArc, m.hasOil, showTemp(st, m.oil), mx.has[kGOil], showTemp(st, mx.v[kGOil]),
               showTemp(st, kScaleOilLo), showTemp(st, kScaleOilHi), tempUnitImage(st));
-    {
-        const double pmax = showPower(st, mx.v[kGPower]);
-        const int end = scaleEnd(mx.has[kGPower], pmax, powerScaleMin(st), kScaleStep);
-        gaugeCard(out + kSlotPowerArc, m.hasPower(), showPower(st, m.power()), mx.has[kGPower], pmax, 0, end,
-                  powerUnitImage(st, m.polish()));
-    }
-    {
-        const double tmax = showTorque(st, mx.v[kGTorque]);
-        const int end = scaleEnd(mx.has[kGTorque], tmax, torqueScaleMin(st), kScaleStep);
-        gaugeCard(out + kSlotTorqueArc, m.hasTorque, showTorque(st, m.torque), mx.has[kGTorque], tmax, 0, end,
-                  torqueUnitImage(st));
-    }
+    gaugeCard(out + kSlotPowerArc, m.hasPower(), showPower(st, m.power()), mx.has[kGPower],
+              showPower(st, mx.v[kGPower]), 0, kScalePowerMax, powerUnitImage(st, m.polish()));
+    gaugeCard(out + kSlotTorqueArc, m.hasTorque, showTorque(st, m.torque), mx.has[kGTorque],
+              showTorque(st, mx.v[kGTorque]), 0, kScaleTorqueMax, torqueUnitImage(st));
 
     const double lat = m.hasLatG() ? m.latG() : 0, lon = m.hasLonG() ? m.lonG() : 0;
     const bool comma = kDecimalComma;

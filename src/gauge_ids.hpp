@@ -24,12 +24,14 @@ enum {
     kImgGNumNone = 60300,                     // "-,--"
     kUnitC = 0, kUnitF, kUnitKm, kUnitKw, kUnitHp, kUnitNm, kUnitLbFt, kUnitL, kUnitGal, kUnitPs,
     kImgBackgroundEn = 56013,                 // the background with English texts (kImgBackground: Polish)
+    kImgBackgroundZh = 56014,                 // Simplified Chinese background (vehicle.language 11 = ZH_CN)
+    kImgBackgroundZhTw = 56015,               // Traditional Chinese background (vehicle.language 10 = ZH_TW)
     kImgFuelUnit = 56496,                     // + 0 "l", + 1 "gal": left aligned, right after the fuel digits
     kColorCount = 4,                      // frame packs GaugeApp_frames_c0.bin .. (blue, red, BMW orange, green)
     kTextSettings = 200,                   // + 10 * setting + value
     kSettingsAction = 31, kSettingsTextModel = 41,   // + setting (raAction / textIdModel of its button)
     kScaleCoolantLo = 50, kScaleCoolantHi = 130, kScaleOilLo = 50, kScaleOilHi = 150,   // printed on the background
-    kScalePowerMin = 150, kScaleTorqueMin = 250    // smallest end of the power / torque scale (it grows with the maxima)
+    kScalePowerMax = 300, kScaleTorqueMax = 450    // fixed top of the power / torque scale
 };
 
 enum Slot {

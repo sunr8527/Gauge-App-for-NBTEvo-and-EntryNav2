@@ -116,10 +116,6 @@ static void testView() {
     gText(-1.5, t, sizeof(t));
     CHECK(std::string(t) == "1,50");
 
-    CHECK(scaleEnd(false, 0, 150, 50) == 150);
-    CHECK(scaleEnd(true, 231, 150, 50) == 250);
-    CHECK(scaleEnd(true, 100, 150, 50) == 150);
-
     CHECK(arcFrame(true, 90, 50, 130) == kImgArc + 30);
     CHECK(arcFrame(true, 20, 50, 130) == kImgArc);
     CHECK(arcFrame(true, 200, 50, 130) == kImgArc + kArcSteps);
@@ -156,9 +152,9 @@ static void testView() {
     CHECK(dotFrame(m) == kImgBlank);
     apply(m, kAccel, "{\"acceleration\":{\"lateral\":0,\"longitudinal\":0}}", 0);
     CHECK(dotFrame(m) == kImgDot + kGSteps * row + kGSteps);
-    apply(m, kAccel, "{\"acceleration\":{\"lateral\":9.81,\"longitudinal\":0}}", 0);      // 1 g right
-    CHECK(dotFrame(m) == kImgDot + kGSteps * row + kGSteps + kGSteps / 2);
-    apply(m, kAccel, "{\"acceleration\":{\"lateral\":29,\"longitudinal\":29}}", 0);       // > 2 g: on the circle
+    apply(m, kAccel, "{\"acceleration\":{\"lateral\":9.81,\"longitudinal\":0}}", 0);      // 1 g right: full scale
+    CHECK(dotFrame(m) == kImgDot + kGSteps * row + 2 * kGSteps);
+    apply(m, kAccel, "{\"acceleration\":{\"lateral\":29,\"longitudinal\":29}}", 0);       // > 1 g: on the circle
     unsigned d = dotFrame(m) - kImgDot;
     int ix = (int)(d % row) - kGSteps, iy = (int)(d / row) - kGSteps;
     CHECK(ix == iy && ix * ix + iy * iy <= kGSteps * kGSteps && ix >= kGSteps - 3);
@@ -170,7 +166,7 @@ static void testView() {
     computeView(none, nomx, st, view);
     CHECK(view[kSlotCoolantArc] == kImgBlank && view[kSlotCoolantMark] == kImgBlank);
     CHECK(view[kSlotCoolantBig0] == kImgBig + 16 + kGlyphMinus && view[kSlotCoolantMax] == kImgBlank);
-    CHECK(view[kSlotPowerHi] == kImgScaleNum + 150 && view[kSlotTorqueHi] == kImgScaleNum + 250);
+    CHECK(view[kSlotPowerHi] == kImgScaleNum + 300 && view[kSlotTorqueHi] == kImgScaleNum + 450);
     CHECK(view[kSlotPowerLo] == kImgScaleNum && view[kSlotCoolantLo] == kImgScaleNum + 50);
     CHECK(view[kSlotCoolantHi] == kImgScaleNum + 130 && view[kSlotOilHi] == kImgScaleNum + 150);
     CHECK(view[kSlotCoolantUnit] == kImgUnit + kUnitC && view[kSlotPowerUnit] == kImgUnit + kUnitKm);
@@ -232,7 +228,7 @@ static void testUnitsAndSettings() {
     CHECK(view[kSlotTorqueBig0] == bigGlyph('2', 0) && view[kSlotTorqueBig1] == bigGlyph('9', 0) &&
           view[kSlotTorqueBig2] == bigGlyph('5', 0));             // 400 Nm = 295 lb-ft
     CHECK(view[kSlotFuel] == kImgFuelNum + 10);                 // 39 l = 10 gal
-    CHECK(view[kSlotPowerHi] == kImgScaleNum + 100);            // kW scale
+    CHECK(view[kSlotPowerHi] == kImgScaleNum + 300);            // fixed power scale (300)
     Settings litres;
     computeView(m, mx, litres, view);
     CHECK(view[kSlotFuel] == kImgFuelNum + 39);
@@ -260,6 +256,13 @@ static void testLanguage() {
     computeView(m, mx, st, view);
     CHECK(view[kSlotPowerUnit] == kImgUnit + kUnitKm);
     CHECK(view[kSlotGBig] == kImgGNum + 62);                    // "0,62"
+    apply(m, kLanguage, "{\"language\":11}", 0);                  // ZH_CN
+    CHECK(!m.polish() && m.chinese() && !m.chineseTraditional());
+    CHECK(backgroundFrame(m) == kImgBackgroundZh);
+    computeView(m, mx, st, view);
+    CHECK(view[kSlotPowerUnit] == kImgUnit + kUnitPs);           // "PS" in Chinese, not the Polish "KM"
+    apply(m, kLanguage, "{\"language\":10}", 0);                  // ZH_TW
+    CHECK(m.chinese() && m.chineseTraditional() && backgroundFrame(m) == kImgBackgroundZhTw);
     apply(m, kLanguage, "{\"language\":1}", 0);                   // DE: English pictures
     CHECK(!m.polish());
     st.power = kKw;

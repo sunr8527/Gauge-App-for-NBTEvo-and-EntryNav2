@@ -49,7 +49,9 @@ enum Prop { kEngineTemp = 0, kRpm, kTorque, kGear, kAccel, kSpeed, kFuel, kLangu
             kPedal, kBrake, kSteer, kConsumption, kAvgConsumption, kAvgSpeed, kStyle, kShift, kGraphic,
             kTempExt, kTempInt, kAcTemps, kBattery, kEngineStatus, kPropCount };
 
-const int kLangPolish = 18;          // vehicle.language: the texts drawn into the pictures are Polish for it, else English
+const int kLangChineseTraditional = 10;   // ZH_TW
+const int kLangChineseSimplified = 11;    // ZH_CN
+const int kLangPolish = 18;               // PL: the drawn texts are Polish for it, English otherwise
 
 inline const char* propName(int p) {
     switch (p) {
@@ -169,8 +171,16 @@ struct Metrics {
           engineStatus(0) { title[0] = 0; appType[0] = 0; }
 
     // Texts in the pictures: Polish until the language is known (the car this was made for), then Polish only for
-    // a Polish HMI.
+    // a Polish HMI, Simplified / Traditional Chinese for ZH_CN / ZH_TW, English for every other language.
     bool polish() const { return language == 0 || language == kLangPolish; }
+    bool chinese() const { return language == kLangChineseSimplified || language == kLangChineseTraditional; }
+    bool chineseTraditional() const { return language == kLangChineseTraditional; }
+    // 0 Polish, 1 English, 2 Simplified Chinese, 3 Traditional Chinese (the screen-frame language index).
+    int langIndex() const {
+        if (language == kLangChineseSimplified) return 2;
+        if (language == kLangChineseTraditional) return 3;
+        return polish() ? 0 : 1;
+    }
 
     bool hasPower() const { return hasTorque && hasRpm; }
     double power() const { return (torque > 0 ? torque : 0) * rpm * kPsPerNmRpm; }   // KM, 0 on overrun

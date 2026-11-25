@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
     runPosted();
     CHECK(slot(kSlotCoolantMark) == kImgMark + 30);             // max = min(90, 98)
     CHECK(slot(kSlotCoolantMax) == kImgMaxNum + 90 && slot(kSlotOilMax) == kImgMaxNum + 104);
-    CHECK(slot(kSlotTorqueMax) == kImgMaxNum + 380 && slot(kSlotTorqueHi) == kImgScaleNum + 400);
+    CHECK(slot(kSlotTorqueMax) == kImgMaxNum + 380 && slot(kSlotTorqueHi) == kImgScaleNum + 450);
     CHECK(writes(kSlotOilBig0) == oilW);                        // oil unchanged: not rewritten
     int w = writes(kSlotCoolantArc);
     runPosted();                                                // nothing new: no writes
@@ -198,6 +198,9 @@ int main(int argc, char** argv) {
     feed("vehicle.language", "{\"language\":18}");
     runPosted();
     CHECK(g_fake.modelImage[kBackgroundModel] == kImgBackground && slot(kSlotPowerUnit) == kImgUnit + kUnitKm);
+    feed("vehicle.language", "{\"language\":11}");                 // ZH_CN: Simplified Chinese pictures
+    runPosted();
+    CHECK(g_fake.modelImage[kBackgroundModel] == kImgBackgroundZh && slot(kSlotPowerUnit) == kImgUnit + kUnitPs);
 
     // ---- fuel next to the gears ----
     feed("sensors.fuel", "{\"fuel\":{\"range\":522,\"reserve\":0,\"tanklevel\":39}}");
@@ -206,14 +209,16 @@ int main(int argc, char** argv) {
     CHECK(slot(kSlotFuelUnit) == kImgFuelUnit);
 
     // ---- screens 1..3: written every tick until the car names the screen on display ----
-    CHECK(sslot(1, -1) == kImgScreenBg + 0 && sslot(2, -1) == kImgScreenBg + 2 && sslot(3, -1) == kImgScreenBg + 4);
+    feed("vehicle.language", "{\"language\":18}");                 // back to Polish for the screen checks
+    runPosted();
+    CHECK(sslot(1, -1) == kImgScreenBg + 0 && sslot(2, -1) == kImgScreenBg + 4 && sslot(3, -1) == kImgScreenBg + 8);
     feed("driving.acceleratorPedal", "{\"acceleratorPedal\":{\"position\":50,\"ecoPosition\":0}}");
     feed("sensors.fuel", "{\"fuel\":{\"range\":498,\"reserve\":0,\"tanklevel\":39}}");
     runPosted();
     CHECK(sslot(1, kDrvSlotGasPct) == kImgPct + 50 && sslot(1, kDrvSlotGear) == kImgGear2 + 5);   // D2
     CHECK(sslot(2, kFuelSlotRange) == kImgTileInt + 498 && sslot(2, kFuelSlotTank) == kImgTileInt + 39);
     CHECK(sslot(3, kPerfSlotStatus) == kImgStatus + eng::kPerfNoData);
-    CHECK(sslot(4, -1) == kImgScreenBg + 6 && sslot(4, kWarmSlotStatus) == kImgWarmStatus + eng::kWarmNoData);
+    CHECK(sslot(4, -1) == kImgScreenBg + 12 && sslot(4, kWarmSlotStatus) == kImgWarmStatus + eng::kWarmNoData);
     CHECK(sslot(4, kWarmSlotRuntime) == kImgTileTime + 0);       // running by the engine speed (3600 above)
     feed("engine.status", "{\"status\":2}");
     feed("engine.temperature", "{\"temperature\":{\"engine\":60,\"oil\":50}}");
@@ -296,7 +301,7 @@ int main(int argc, char** argv) {
     runPosted();
     runPosted();
     CHECK(g_fake.modelWrites[1099] == drvBg);
-    CHECK(slot(kSlotTorqueMax) == kImgBlank && slot(kSlotTorqueHi) == kImgScaleNum + 250);   // scale back to its minimum
+    CHECK(slot(kSlotTorqueMax) == kImgBlank && slot(kSlotTorqueHi) == kImgScaleNum + 450);   // fixed torque scale
     CHECK(slot(kSlotCoolantUnit) == kImgUnit + kUnitF);         // settings kept (Fahrenheit)
     app->onFinalize();
     runPosted();

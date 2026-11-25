@@ -702,7 +702,7 @@ int renderScreen(bmw::PluginApp* app, int s, bool force) {
     ScreenCache& c = g_cache[s];
     int written = 0;
     const unsigned base = 1000u * (unsigned)s;
-    const unsigned bg = screenBackground(s, m.polish());
+    const unsigned bg = screenBackground(s, m);
     if (force || !c.valid || bg != c.bg) {
         if (sendFrame(app, base + 99, bg)) ++written;
         c.bg = bg;

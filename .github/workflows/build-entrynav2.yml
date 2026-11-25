@@ -1,0 +1,38 @@
+name: Build EntryNav2 libGaugeApp.so
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check the BMW libraries are present
+        run: |
+          test -f lib/Entry_Evo_libs/libAppFramework.A.so || \
+            { echo "lib/Entry_Evo_libs/libAppFramework.A.so is missing (gitignored)"; exit 1; }
+          test -f lib/Entry_Evo_libs/libCoreFramework.A.so || \
+            { echo "lib/Entry_Evo_libs/libCoreFramework.A.so is missing (gitignored)"; exit 1; }
+
+      - name: Build the armhf toolchain image
+        run: docker build -t gauge-entrynav2-tc toolchain
+
+      - name: Build the EntryNav2 distribution
+        run: docker run --rm -v "$PWD:/work" -w /work gauge-entrynav2-tc make entrynav2-dist
+
+      - name: Upload libGaugeApp.so
+        uses: actions/upload-artifact@v4
+        with:
+          name: libGaugeApp-so
+          path: build/entrynav2/libGaugeApp.so
+
+      - name: Upload the full deployment archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: gauge-app-entrynav2-dist
+          path: dist/gauge-app-entrynav2.tar

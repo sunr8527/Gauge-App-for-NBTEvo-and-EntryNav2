@@ -26,6 +26,7 @@ import struct
 import argparse
 import math
 import os
+import sys
 import zipfile
 
 try:
@@ -38,16 +39,16 @@ FIXED_DATE = (2026, 11, 20, 0, 0, 0)  # the same date in every archive member: r
 SS = 4                                 # supersampling for smooth edges
 
 # ---- look -----------------------------------------------------------------------------------------------------------
-CARD = (21, 24, 29, 255)
+CARD = (21, 24, 29, 80)
 TRACK = (44, 44, 42, 255)
 ACCENT = (55, 138, 221, 255)
 ACCENT_LIGHT = (133, 183, 235, 255)
 AMBER = (250, 199, 117, 255)
 RED = (226, 75, 74, 255)
 TEXT = (230, 241, 251, 255)
-TEXT2 = (180, 178, 169, 255)
-MUTED = (136, 135, 128, 255)
-FAINT = (95, 94, 90, 255)
+TEXT2 = (220, 220, 220, 255)
+MUTED = (170, 170, 170, 255)
+FAINT = (120, 120, 110, 255)
 PILL = (12, 68, 124, 255)
 
 # Gauge colours (the OPTION menu): arcs, the g-meter dot and the lit gear. Each has its own frame pack
@@ -71,6 +72,10 @@ BG_TEXTS = {
            "G": "Przeciążenie", "LAT": "bok", "LON": "wzdł."},
     "en": {"COOLANT": "Coolant", "OIL": "Engine oil", "POWER": "Power", "TORQUE": "Torque",
            "G": "G-force", "LAT": "lat.", "LON": "long."},
+    "zh-CN": {"COOLANT": "水温", "OIL": "油温", "POWER": "功率", "TORQUE": "扭矩",
+              "G": "G值", "LAT": "横向", "LON": "纵向"},
+    "zh-TW": {"COOLANT": "冷卻液", "OIL": "機油", "POWER": "功率", "TORQUE": "扭力",
+              "G": "G值", "LAT": "橫向", "LON": "縱向"},
 }
 SETTING_TEXTS = {  # text id = 200 + 10 * setting + value (gauge_view.hpp settingText); (Polish, English)
     200: [("Kolor wskaznikow: " + p, "Gauge colour: " + e) for p, e in zip(COLOR_NAMES_PL, COLOR_NAMES_EN)],
@@ -82,13 +87,28 @@ SETTING_TEXTS = {  # text id = 200 + 10 * setting + value (gauge_view.hpp settin
 }
 TEXT_SETTINGS_TITLE = 250
 SETTINGS_TITLE = ("Ustawienia", "Settings")
+SETTINGS_TITLE_ZH = {"zh-CN": "设置", "zh-TW": "設定"}
+SETTING_TEXTS_ZH_CN = {  # Simplified Chinese settings texts
+    200: ["仪表颜色：蓝色", "仪表颜色：红色", "仪表颜色：BMW 橙色", "仪表颜色：绿色"],
+    210: ["温度：摄氏度", "温度：华氏度"],
+    220: ["功率：PS", "功率：kW", "功率：hp"],
+    230: ["扭矩：Nm", "扭矩：lb-ft"],
+    240: ["燃油：升", "燃油：美制加仑"],
+}
+SETTING_TEXTS_ZH_TW = {  # Traditional Chinese settings texts
+    200: ["儀表顏色：藍色", "儀表顏色：紅色", "儀表顏色：BMW 橙色", "儀表顏色：綠色"],
+    210: ["溫度：攝氏度", "溫度：華氏度"],
+    220: ["功率：PS", "功率：kW", "功率：hp"],
+    230: ["扭力：Nm", "扭力：lb-ft"],
+    240: ["燃油：升", "燃油：美制加侖"],
+}
 
 # ---- layout (design pixels; scaled by SCALE on the car and placed at ORIGIN, moved with --x / --y) -----------------
 W, H = 960, 400
-SCALE = 1.15                                      # 960 x 400 -> 1104 x 460 of the ~1250 x 470 visible area
-ORIGIN = (73, 4)                                  # where the scaled screen starts in the state (centred)
+SCALE = 1.2                                       # 960 x 400 -> 1152 x 480 of the ~1250 x 470 visible area
+ORIGIN = (5, 0)                                   # where the scaled screen starts in the state
 SCREEN_PRESETS = {
-    "1280x480": (1.15, 73, 4),
+    "1280x480": (1.2, 5, 0),
     "800x480": (1.0, 20, 10),                     # own 760 x 446 layout with bigger fonts (apply_screen_preset)
 }
 
@@ -99,11 +119,11 @@ def sc(v):
 CARD_W, CARD_H = 290, 192
 GAUGES = [  # name, card origin, title, unit, fixed scale (lo, hi) or None (scale set by the app), red zone from
     ("COOLANT", (0, 0), "P\u0142yn ch\u0142odniczy", "\u00b0C", (50, 130), 115),
-    ("OIL", (0, 208), "Olej silnikowy", "\u00b0C", (50, 150), 135),
+    ("OIL", (0, 203), "Olej silnikowy", "\u00b0C", (50, 150), 135),
     ("POWER", (670, 0), "Moc", "KM", None, None),
-    ("TORQUE", (670, 208), "Moment obrotowy", "Nm", None, None),
+    ("TORQUE", (670, 203), "Moment obrotowy", "Nm", None, None),
 ]
-POWER_SCALE_MIN, TORQUE_SCALE_MIN = 150, 250     # KM / Nm: the scale starts here and grows with the recorded max
+POWER_SCALE_MAX, TORQUE_SCALE_MAX = 300, 450     # PS / Nm: fixed top of the power / torque scale
 ARC_C, ARC_R, ARC_W = (145, 126), 78, 9          # inside a card
 ARC_STEPS = 60                                    # frames 0..60
 ARC_BOX = (ARC_C[0] - ARC_R - 8, ARC_C[1] - ARC_R - 8, 2 * ARC_R + 16, ARC_R + 18)   # x, y, w, h inside a card
@@ -121,16 +141,16 @@ TITLE_POS, MAX_LABEL = (16, 12), (16, 2, "la")   # card title; "max": x, y below
 DOT_R, PUMP_K, SCALE_COLOR = 8, 1.0, FAINT       # g-meter dot radius, fuel pump icon size factor, scale-end colour
 
 G_CARD = (305, 0, 350, 300)
-G_C, G_R = (175, 120), 86                         # g-meter centre / 2 g radius inside the card
-G_STEPS = 10                                      # dot grid: -10..10 per axis, 0.2 g per step
+G_C, G_R = (175, 120), 86                         # g-meter centre / 1 g radius inside the card
+G_STEPS = 10                                      # dot grid: -10..10 per axis, 0.1 g per step
 G_BOX = 196
 G_BIG_BOX = (175 - 60, 214, 120, 52)              # x, y, w, h: "0,62" centred
 G_LAT_BOX, G_LON_BOX = (92, 274, 50, 22), (244, 274, 50, 22)   # amber, left aligned
 
-GEAR_CARD = (305, 316, 230, 84)                   # gears ...
+GEAR_CARD = (305, 311, 230, 84)                   # gears ...
 GEAR_CELLS = [("P", 10, 38), ("R", 52, 38), ("N", 94, 38), ("D", 136, 84)]   # letter, x, width inside the card
 GEAR_Y, GEAR_H = 14, 56
-FUEL_CARD = (543, 316, 112, 84)                   # ... and fuel, side by side under the g-meter
+FUEL_CARD = (543, 311, 112, 84)                   # ... and fuel, side by side under the g-meter
 FUEL_ICON = (22, 42)                              # centre of the pump icon inside the fuel card
 FUEL_BOX = (36, 26, 44, 32)                       # x, y, w, h: the fuel number, right aligned
 FUEL_UNIT_BOX = (36 + 44 + 4, 33, 28, 22)         # x, y, w, h: the unit, left aligned, right after the number
@@ -138,6 +158,9 @@ FUEL_UNIT_BOX = (36 + 44 + 4, 33, 28, 22)         # x, y, w, h: the unit, left a
 # ---- image ids ------------------------------------------------------------------------------------------------------
 IMG_ICON, IMG_BG, IMG_BLANK, IMG_TEST = 56001, 56010, 56011, 56012   # IMG_TEST: 549x484 card (--diag)
 IMG_BG_EN = 56013                                 # the background with English texts (IMG_BG: Polish)
+IMG_BG_ZH = 56014                                 # the background with Simplified Chinese texts
+IMG_BG_ZH_TW = 56015                              # the background with Traditional Chinese texts
+BG_FRAMES = {"pl": IMG_BG, "en": IMG_BG_EN, "zh-CN": IMG_BG_ZH, "zh-TW": IMG_BG_ZH_TW}
 IMG_ARC, IMG_MARK = 56100, 56200
 IMG_BIG = 56300                                   # + 16 * variant + glyph
 IMG_UNIT = 56485                                  # + index in UNITS
@@ -157,14 +180,25 @@ IMG_DOT = 56600                                   # + iy * 21 + ix
 LANGS = {
     "de": "Deutsch", "en-UK": "English (UK)", "en-US": "English (US)", "es-ES": "Espanol", "es-US": "Espanol (US)",
     "fr-FR": "Francais", "fr-CA": "Francais (CA)", "it": "Italiano", "pt": "Portugues", "ru": "Russian", "pl": "Polski",
+    "zh-CN": "中文（简体）", "zh-TW": "中文（繁體）",
 }
 TITLE = "GAUGE APP"
+TITLE_ZH = "扩展仪表"
 
 FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/TTF/DejaVuSans.ttf",
     "C:/Windows/Fonts/DejaVuSans.ttf",
 ]
+# Chinese glyphs are not in DejaVu Sans: background() picks one of these for zh-CN / zh-TW.
+CJK_FONT_CANDIDATES = {
+    "zh-CN": ["C:/Windows/Fonts/simhei.ttf", "C:/Windows/Fonts/msyh.ttc",
+              "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"],
+    "zh-TW": ["C:/Windows/Fonts/mingliub.ttc", "C:/Windows/Fonts/Deng.ttf",
+              "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+              "/usr/share/fonts/truetype/arphic/uming.ttc"],
+}
 
 
 def find_font(path):
@@ -172,6 +206,14 @@ def find_font(path):
         if p and os.path.exists(p):
             return p
     raise SystemExit("no TrueType font found: install fonts-dejavu-core or pass --font FILE.ttf")
+
+
+def cjk_font_for(lang):
+    """A font that covers the Chinese labels of lang, or None when none of the known ones is installed."""
+    for p in CJK_FONT_CANDIDATES.get(lang, []):
+        if os.path.exists(p):
+            return p
+    return None
 
 
 class Canvas:
@@ -222,6 +264,8 @@ def arc_point(c, r, f):
 
 
 def font(path, size):
+    if path.lower().endswith(".ttc"):
+        return ImageFont.truetype(path, size * SS, index=0)
     return ImageFont.truetype(path, size * SS)
 
 
@@ -258,7 +302,13 @@ def slots():
 def background(fp, lang="pl"):
     tx = BG_TEXTS[lang]
     c = Canvas(W, H)
-    f_title, f_unit, f_small = font(fp, TITLE_SIZE), font(fp, UNIT_SIZE), font(fp, SMALL_SIZE)
+    text_font = fp
+    if lang in ("zh-CN", "zh-TW"):
+        text_font = cjk_font_for(lang)
+        if not text_font:
+            print("warning: no CJK font found for %s; its card labels will be missing glyphs" % lang, file=sys.stderr)
+            text_font = fp
+    f_title, f_unit, f_small = font(text_font, TITLE_SIZE), font(text_font, UNIT_SIZE), font(text_font, SMALL_SIZE)
     for name, (cx, cy), _title, unit, scale, red in GAUGES:
         c.rrect(cx, cy, CARD_W, CARD_H, 12, CARD)
         c.text((cx + TITLE_POS[0], cy + TITLE_POS[1]), tx[name], f_title, TEXT2)
@@ -275,11 +325,11 @@ def background(fp, lang="pl"):
     c.line((gc[0] - G_R, gc[1]), (gc[0] + G_R, gc[1]), TRACK, 1)
     c.line((gc[0], gc[1] - G_R), (gc[0], gc[1] + G_R), TRACK, 1)
     if G_C[0] + G_R + 3 + 2.2 * SMALL_SIZE <= gw:   # ring labels right of the centre, or up the vertical axis
-        c.text((gc[0] + G_R / 2.0 + 3, gc[1] - 3), "1 g", f_small, FAINT, "ld")
-        c.text((gc[0] + G_R + 3, gc[1] - 3), "2 g", f_small, FAINT, "ld")
+        c.text((gc[0] + G_R / 2.0 + 3, gc[1] - 3), "0.5 g", f_small, FAINT, "ld")
+        c.text((gc[0] + G_R + 3, gc[1] - 3), "1 g", f_small, FAINT, "ld")
     else:
-        c.text((gc[0] + 4, gc[1] - G_R / 2.0 + 2), "1g", f_small, FAINT, "la")
-        c.text((gc[0] + 4, gc[1] - G_R + 2), "2g", f_small, FAINT, "la")
+        c.text((gc[0] + 4, gc[1] - G_R / 2.0 + 2), "0.5g", f_small, FAINT, "la")
+        c.text((gc[0] + 4, gc[1] - G_R + 2), "1g", f_small, FAINT, "la")
     bx, by, bw, bh = G_BIG_BOX
     c.text((gx + bx + bw + 4, gy + by + bh - 12), "g", f_unit, MUTED, "ls")
     for key, (lx, ly, _lw, lh) in (("LAT", G_LAT_BOX), ("LON", G_LON_BOX)):
@@ -407,7 +457,9 @@ def make_icon():
 
 def common_images(fp):
     """Frames that look the same in every colour: GaugeApp_frames.bin."""
-    imgs = {IMG_BG: background(fp, "pl"), IMG_BG_EN: background(fp, "en"), IMG_BLANK: Canvas(1, 1, scaled=False).image()}
+    imgs = {IMG_BG: background(fp, "pl"), IMG_BG_EN: background(fp, "en"),
+            IMG_BG_ZH: background(fp, "zh-CN"), IMG_BG_ZH_TW: background(fp, "zh-TW"),
+            IMG_BLANK: Canvas(1, 1, scaled=False).image()}
     for k in range(ARC_STEPS + 1):
         imgs[IMG_MARK + k] = arc_frame(k / float(ARC_STEPS), ACCENT, marker=True)
     for variant in (0, 1):
@@ -465,6 +517,8 @@ SCREEN_TEXTS = {  # text id: (Polish, English); 260 + screen = the state titles 
     260: ("Silnik", "Engine"), 261: ("Jazda", "Driving"), 262: ("Spalanie i trasa", "Fuel and trip"),
     263: ("Pomiary", "Performance"), 264: ("Rozgrzewanie", "Warm-up"),
 }
+SCREEN_TEXTS_ZH_CN = {260: "发动机", 261: "驾驶", 262: "油耗与行程", 263: "性能", 264: "暖机"}
+SCREEN_TEXTS_ZH_TW = {260: "引擎", 261: "駕駛", 262: "油耗與行程", 263: "性能", 264: "暖機"}
 SCREEN_STATES = [10, 14, 15, 16, 17]              # screen k -> hmiState
 SCREEN_ACTIONS = [8, 9, 11, 13, 19]               # hmiAction that opens screen k
 SCREEN_TEXTMODELS = [80, 81, 82, 83, 84]          # textIdModel with text 260 + k
@@ -502,13 +556,13 @@ IMG_WHEEL = 71000                                 # + 0..71 (5 deg steps)
 IMG_GASBAR, IMG_BRKBAR, IMG_CHART, IMG_STYLE = 71100, 71200, 71300, 71400
 IMG_GEAR2 = 71500                                 # P R N D D1..D8, 12 = "--" (colour pack)
 IMG_SHIFT = 71520                                 # 0 up, 1 down
-IMG_STATUS = 71600                                # + 10 * language (0 pl, 1 en) + PerfStatus
-IMG_BG_S = 71800                                  # + 2 * (screen - 1) + language
+IMG_STATUS = 71600                                # + 10 * language (0 pl, 1 en, 2 zh-CN, 3 zh-TW) + PerfStatus
+IMG_BG_S = 71800                                  # + 4 * (screen - 1) + language (0 pl, 1 en, 2 zh-CN, 3 zh-TW)
 IMG_TSINT, TSINT_MIN, TSINT_MAX = 72000, -60, 160 # tile -60..160, centred (warm-up temperatures): + value - TSINT_MIN
 IMG_TCINT, IMG_TCNONE = 72600, 72710              # tile 0..100, centred (battery %); centred "--"
 IMG_WPROG, WARM_STEPS = 72300, 40                 # warm-up progress bar 0..40 (amber)
 IMG_WDONE = 72350                                 # full bar, green
-IMG_WSTATUS = 72400                               # + 10 * language + WarmStatus
+IMG_WSTATUS = 72400                               # + 10 * language (0 pl, 1 en, 2 zh-CN, 3 zh-TW) + WarmStatus
 WSTATUS_BOX = (322, 32)
 WPROG_BOX = (322, 14)
 WARM_TEXTS = {
@@ -518,9 +572,17 @@ WARM_TEXTS = {
     "en": {"OIL": "Engine oil", "COOLANT": "Coolant", "WARM": "Warm-up", "TARGET": "target",
            "PROG": "progress (oil)", "RUN": "Engine running", "ETA": "Warm in about", "EXT": "Outside",
            "INT": "Inside", "EVAP": "A/C evaporator", "BATT": "Battery"},
+    "zh-CN": {"OIL": "油温", "COOLANT": "水温", "WARM": "暖机", "TARGET": "目标",
+              "PROG": "进度（机油）", "RUN": "发动机运行时间", "ETA": "约还需", "EXT": "车外",
+              "INT": "车内", "EVAP": "空调蒸发器", "BATT": "电瓶"},
+    "zh-TW": {"OIL": "油溫", "COOLANT": "水溫", "WARM": "暖機", "TARGET": "目標",
+              "PROG": "進度（機油）", "RUN": "引擎運行時間", "ETA": "約還需", "EXT": "車外",
+              "INT": "車內", "EVAP": "空調蒸發器", "BATT": "電瓶"},
 }
 WARM_STATUS_TEXTS = {"pl": ["Brak danych", "Silnik wyłączony", "Silnik się rozgrzewa", "Rozgrzany – pełna moc"],
-                     "en": ["No data", "Engine off", "Engine warming up", "Warm – full power"]}
+                     "en": ["No data", "Engine off", "Engine warming up", "Warm – full power"],
+                     "zh-CN": ["无数据", "发动机已关闭", "发动机预热中", "已暖机 – 全功率"],
+                     "zh-TW": ["無資料", "引擎已關閉", "引擎暖機中", "已暖機 – 全功率"]}
 WARM_TILES = [("EXT", 670, 0, 140, 192), ("INT", 820, 0, 140, 192), ("EVAP", 670, 208, 140, 192),
               ("BATT", 820, 208, 140, 192)]
 WARM_MID = (305, 0, 350, 400)
@@ -542,11 +604,29 @@ S_TEXTS = {
            "P0100": "0–100 km/h", "BEST": "best", "P60": "60–100 km/h", "P80": "80–120 km/h",
            "PBRK": "100–0 km/h", "PQ": "1/4 mile", "STATUS": "Status", "MAXLAT": "Max lateral",
            "MAXBRK": "Max braking"},
+    "zh-CN": {"GAS": "油门", "BRAKE": "刹车", "G": "G值", "WHEEL": "方向盘", "LOAD": "负载",
+              "GEAR": "挡位", "LEFT": "左", "RIGHT": "右", "ACC": "加速", "BRK": "制动",
+              "INST": "瞬时油耗", "HIST": "最近5分钟", "TRIPAVG": "本行程平均", "BCAVG": "平均（BC）",
+              "AVGSPD": "平均车速", "RANGE": "续航里程", "TANK": "油箱", "TRIP": "本行程", "TIME": "时间",
+              "USED": "已耗燃油", "STYLE": "驾驶风格", "STA": "加速", "STB": "制动", "STS": "换挡",
+              "P0100": "0–100 km/h", "BEST": "最佳", "P60": "60–100 km/h", "P80": "80–120 km/h",
+              "PBRK": "100–0 km/h", "PQ": "1/4英里", "STATUS": "状态", "MAXLAT": "最大横向",
+              "MAXBRK": "最大制动"},
+    "zh-TW": {"GAS": "油門", "BRAKE": "煞車", "G": "G值", "WHEEL": "方向盤", "LOAD": "負載",
+              "GEAR": "檔位", "LEFT": "左", "RIGHT": "右", "ACC": "加速", "BRK": "煞車",
+              "INST": "瞬時油耗", "HIST": "最近5分鐘", "TRIPAVG": "本行程平均", "BCAVG": "平均（BC）",
+              "AVGSPD": "平均車速", "RANGE": "續航里程", "TANK": "油箱", "TRIP": "本行程", "TIME": "時間",
+              "USED": "已耗燃油", "STYLE": "駕駛風格", "STA": "加速", "STB": "煞車", "STS": "換檔",
+              "P0100": "0–100 km/h", "BEST": "最佳", "P60": "60–100 km/h", "P80": "80–120 km/h",
+              "PBRK": "100–0 km/h", "PQ": "1/4英里", "STATUS": "狀態", "MAXLAT": "最大橫向",
+              "MAXBRK": "最大煞車"},
 }
 STATUS_TEXTS = {"pl": ["Brak danych o prędkości", "Gotowy – ruszaj", "Pomiar…", "Zatrzymaj auto, by mierzyć 0–100",
                        "Pomiar hamowania…"],
                 "en": ["No speed data", "Ready – go", "Measuring…", "Stop the car to time 0–100",
-                       "Measuring braking…"]}
+                       "Measuring braking…"],
+                "zh-CN": ["无车速数据", "就绪 – 出发", "测量中…", "停车以计时 0–100", "测量制动中…"],
+                "zh-TW": ["無車速資料", "就緒 – 出發", "測量中…", "停車以計時 0–100", "測量煞車中…"]}
 
 # Layouts (design pixels, like the engine screen). Cards: (key, x, y, w, h); slots: (name, x, y, w, h).
 DRV_CARDS = [("GAS", 0, 0, 110, 400), ("BRAKE", 120, 0, 110, 400), ("G", 240, 0, 420, 400),
@@ -663,6 +743,13 @@ def card_unit(c, fp, x, y, w, h, unit):
 
 def s_background(fp, screen, lang):
     tx = S_TEXTS[lang]
+    if lang in ("zh-CN", "zh-TW"):
+        cjk = cjk_font_for(lang)
+        if cjk:
+            fp = cjk
+        else:
+            print("warning: no CJK font found for %s; its screen labels will be missing glyphs" % lang,
+                  file=sys.stderr)
     c = Canvas(W, H)
     f_small, f_unit = font(fp, 13), font(fp, 15)
     if screen == 1:
@@ -784,8 +871,8 @@ def screen_images(fp):
     """Colour-independent frames of screens 1..3: GaugeApp_frames_s.bin."""
     imgs = {}
     for s in range(1, len(SCREEN_STATES)):
-        for li, lang in enumerate(("pl", "en")):
-            imgs[IMG_BG_S + 2 * (s - 1) + li] = s_background(fp, s, lang)
+        for li, lang in enumerate(("pl", "en", "zh-CN", "zh-TW")):
+            imgs[IMG_BG_S + 4 * (s - 1) + li] = s_background(fp, s, lang)
     for v in range(TSINT_MIN, TSINT_MAX + 1):
         imgs[IMG_TSINT + v - TSINT_MIN] = number_image(fp, str(v), TILE["w"], TILE["h"], TILE["size"], TEXT, "m")
     for v in range(101):
@@ -794,7 +881,7 @@ def screen_images(fp):
     for lv in range(WARM_STEPS + 1):
         imgs[IMG_WPROG + lv] = bar_frame(lv, WARM_STEPS, WPROG_BOX[0], WPROG_BOX[1], AMBER, 7, False)
     imgs[IMG_WDONE] = bar_frame(WARM_STEPS, WARM_STEPS, WPROG_BOX[0], WPROG_BOX[1], (99, 153, 34, 255), 7, False)
-    for li, lang in enumerate(("pl", "en")):
+    for li, lang in enumerate(("pl", "en", "zh-CN", "zh-TW")):
         for k, t in enumerate(WARM_STATUS_TEXTS[lang]):
             c = Canvas(*WSTATUS_BOX)
             c.text((0, WSTATUS_BOX[1] / 2.0), t, font(fp, 22), TEXT, "lm")
@@ -829,7 +916,7 @@ def screen_images(fp):
         imgs[IMG_STYLE + lv] = bar_frame(lv, STYLE["steps"], STYLE["w"], STYLE["h"], (99, 153, 34, 255), 5, False)
     for i, ch in enumerate(("▲", "▼")):
         imgs[IMG_SHIFT + i] = number_image(fp, ch, 40, 40, 30, AMBER, "m")
-    for li, lang in enumerate(("pl", "en")):
+    for li, lang in enumerate(("pl", "en", "zh-CN", "zh-TW")):
         for k, t in enumerate(STATUS_TEXTS[lang]):
             imgs[IMG_STATUS + 10 * li + k] = status_image(fp, t)
     return imgs
@@ -854,8 +941,7 @@ def screen_color_images(fp, color):
 
 def screen_preview(imgs, screen, lang="pl"):
     """Screen 1..3 with sample values, composed like the HMI would."""
-    comma = lang == "pl"
-    s = 0 if comma else 1                          # language (texts, statuses)
+    s = {"pl": 0, "en": 1, "zh-CN": 2, "zh-TW": 3}[lang]   # language (texts, statuses)
     d = 0                                          # decimal comma sets in every language
     dec = lambda v: IMG_TDEC + DEC_STRIDE * d + int(round(v * 10))
     names = {}
@@ -900,7 +986,7 @@ def screen_preview(imgs, screen, lang="pl"):
                  "LIVE": dec(0), "MAXLAT": IMG_GNUM + SEP_STRIDE * d + 92, "MAXBRK": IMG_GNUM + SEP_STRIDE * d + 105}
         slot_list = perf_slots()
     out = Image.new("RGBA", (sc(W), sc(H)), (11, 13, 16, 255))
-    out.alpha_composite(imgs[IMG_BG_S + 2 * (screen - 1) + (0 if comma else 1)])
+    out.alpha_composite(imgs[IMG_BG_S + 4 * (screen - 1) + s])
     for name, x, y, _w, _h in slot_list:
         im = imgs.get(names.get(name, IMG_BLANK))
         if im is not None and im.size != (1, 1):
@@ -1150,12 +1236,14 @@ enum {
     kImgGNumNone = %d,                     // "-,--"
     kUnitC = 0, kUnitF, kUnitKm, kUnitKw, kUnitHp, kUnitNm, kUnitLbFt, kUnitL, kUnitGal, kUnitPs,
     kImgBackgroundEn = %d,                 // the background with English texts (kImgBackground: Polish)
+    kImgBackgroundZh = %d,                 // Simplified Chinese background (vehicle.language 11 = ZH_CN)
+    kImgBackgroundZhTw = %d,               // Traditional Chinese background (vehicle.language 10 = ZH_TW)
     kImgFuelUnit = %d,                     // + 0 "l", + 1 "gal": left aligned, right after the fuel digits
     kColorCount = %d,                      // frame packs GaugeApp_frames_c0.bin .. (blue, red, BMW orange, green)
     kTextSettings = 200,                   // + 10 * setting + value
     kSettingsAction = %d, kSettingsTextModel = %d,   // + setting (raAction / textIdModel of its button)
     kScaleCoolantLo = %d, kScaleCoolantHi = %d, kScaleOilLo = %d, kScaleOilHi = %d,   // printed on the background
-    kScalePowerMin = %d, kScaleTorqueMin = %d    // smallest end of the power / torque scale (it grows with the maxima)
+    kScalePowerMax = %d, kScaleTorqueMax = %d    // fixed top of the power / torque scale
 };
 
 enum Slot {
@@ -1172,8 +1260,8 @@ enum Slot {
 """ % (IMG_ICON, IMG_BG, IMG_BLANK, IMG_ARC, IMG_MARK, ARC_STEPS, IMG_BIG, IMG_GEAR, IMG_DOT, G_STEPS,
        IMG_UNIT, IMG_MAXNUM, MAXNUM_MAX, IMG_SCALENUM, SCALENUM_MAX, IMG_FUELNUM, FUELNUM_MAX, IMG_FUELNUM_NONE,
        IMG_GNUM, IMG_LATNUM, GNUM_MAX, SEP_STRIDE, IMG_GNUM_NONE,
-       IMG_BG_EN, IMG_FUEL_UNIT, len(COLORS), SETTINGS_ACTION0, SETTINGS_TEXTMODEL0,
-       GAUGES[0][4][0], GAUGES[0][4][1], GAUGES[1][4][0], GAUGES[1][4][1], POWER_SCALE_MIN, TORQUE_SCALE_MIN, names,
+       IMG_BG_EN, IMG_BG_ZH, IMG_BG_ZH_TW, IMG_FUEL_UNIT, len(COLORS), SETTINGS_ACTION0, SETTINGS_TEXTMODEL0,
+       GAUGES[0][4][0], GAUGES[0][4][1], GAUGES[1][4][0], GAUGES[1][4][1], POWER_SCALE_MAX, TORQUE_SCALE_MAX, names,
        screen_header())
 
 
@@ -1241,7 +1329,7 @@ def preview(imgs, slot_list, lang="pl"):
     pick["G_DOT"] = IMG_DOT + 9 * 21 + 13
     pick["GEAR_D"] = IMG_GEAR + 13
     out = Image.new("RGBA", (sc(W), sc(H)), (11, 13, 16, 255))
-    out.alpha_composite(imgs[IMG_BG if lang == "pl" else IMG_BG_EN])
+    out.alpha_composite(imgs[BG_FRAMES[lang]])
     for name, x, y, _w, _h, img in slot_list:
         im = imgs[pick.get(name, img)]
         if im.size != (1, 1):
@@ -1271,21 +1359,40 @@ def write_images(path, imgs):
             add(z, "%d.png" % iid, png_bytes(imgs[iid]))
 
 
+def setting_texts_for(lang):
+    """Settings and screen-title texts: Polish for pl, English for the rest, Chinese for zh-CN / zh-TW."""
+    texts = dict(DIAG_TEXTS)
+    if lang in ("zh-CN", "zh-TW"):
+        table = SETTING_TEXTS_ZH_CN if lang == "zh-CN" else SETTING_TEXTS_ZH_TW
+        for base, values in table.items():
+            for v, text in enumerate(values):
+                texts[base + v] = text
+        texts[TEXT_SETTINGS_TITLE] = SETTINGS_TITLE_ZH[lang]
+    else:
+        pl = 0 if lang == "pl" else 1
+        for base, values in SETTING_TEXTS.items():
+            for v, pair in enumerate(values):
+                texts[base + v] = pair[pl]
+        texts[TEXT_SETTINGS_TITLE] = SETTINGS_TITLE[pl]
+    if lang == "zh-CN":
+        for tid, text in SCREEN_TEXTS_ZH_CN.items():
+            texts[tid] = text
+    elif lang == "zh-TW":
+        for tid, text in SCREEN_TEXTS_ZH_TW.items():
+            texts[tid] = text
+    else:
+        for tid, pair in SCREEN_TEXTS.items():
+            texts[tid] = pair[0 if lang == "pl" else 1]
+    return texts
+
+
 def write_texts(path):
     with zipfile.ZipFile(path, "w") as z:
         for lang, langname in LANGS.items():
-            pl = 0 if lang == "pl" else 1                # settings texts: Polish for pl, English otherwise (ASCII)
-            texts = dict(DIAG_TEXTS)
-            for base, values in SETTING_TEXTS.items():
-                for v, pair in enumerate(values):
-                    texts[base + v] = pair[pl]
-            texts[TEXT_SETTINGS_TITLE] = SETTINGS_TITLE[pl]
-            for tid, pair in SCREEN_TEXTS.items():
-                texts[tid] = pair[pl]
-            body = "100000=%s\n1=%s\n" % (langname, TITLE)
+            texts = setting_texts_for(lang)
+            title = TITLE_ZH if lang in ("zh-CN", "zh-TW") else TITLE
+            body = "100000=%s\n1=%s\n" % (langname, title)
             body += "".join("%d=%s\n" % (k, v) for k, v in sorted(texts.items()))
-            if not body.isascii():
-                raise SystemExit("texts must stay ASCII (%s)" % lang)
             add(z, lang + ".txt", body.encode("utf-8"))
 
 
@@ -1439,6 +1546,7 @@ def main():
                                                    "preview_%s.png" % color[0]))
         if k == 0:
             preview(both, slot_list, "en").save(os.path.join(HERE, "res", "preview_en.png"))
+            preview(both, slot_list, "zh-CN").save(os.path.join(HERE, "res", "preview_zh.png"))
     icon = make_icon()
     write_images(os.path.join(HERE, "GaugeApp_ALL_Images.zip"), {IMG_ICON: icon})
     write_texts(os.path.join(HERE, "GaugeApp_ALL_Texts.zip"))
