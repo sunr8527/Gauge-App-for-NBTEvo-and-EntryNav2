@@ -21,13 +21,13 @@ jobs:
         run: git clone --depth 1 https://github.com/luka-dev/qnx65-armv7-toolchain.git /tmp/qnx-tc
 
       - name: Build the QNX toolchain image (once, slow)
-        run: docker build --platform=linux/amd64 --target base-8.5 -t qnx65-armv7-toolchain /tmp/qnx-tc
+        run: docker build --platform=linux/amd64 --target base-4.9 -t qnx65-armv7-toolchain /tmp/qnx-tc
 
       - name: Build libGaugeApp.so (NBT Evo)
         run: |
           docker run --rm -v "$PWD:/src" -w /src qnx65-armv7-toolchain \
             arm-unknown-nto-qnx6.5.0eabi-g++ -std=gnu++98 -O2 -Wall -D_QNX_SOURCE \
-            -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp -fPIC -I./src \
+            -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp -fPIC -I./src -include toolchain/qnx-preamble.h \
             -shared -Wl,-soname,libGaugeApp.so -static-libstdc++ -static-libgcc \
             -o libGaugeApp.so src/engine_data.cpp \
             lib/NBT_evo_libs/libAppFramework.A.so lib/NBT_evo_libs/libCoreFramework.A.so \
@@ -36,7 +36,8 @@ jobs:
       - name: Verify the library
         run: |
           docker run --rm -v "$PWD:/src" -w /src qnx65-armv7-toolchain sh -c \
-            'arm-unknown-nto-qnx6.5.0eabi-readelf -h libGaugeApp.so | grep -E "Class:|Machine:"; \
+            'cp libGaugeApp.so /tmp/ && cd /tmp && \
+             arm-unknown-nto-qnx6.5.0eabi-readelf -d libGaugeApp.so | grep -E "NEEDED|SONAME"; \
              ! arm-unknown-nto-qnx6.5.0eabi-nm -D -u libGaugeApp.so | grep -q GLIBCXX'
 
       - name: Upload libGaugeApp.so
