@@ -882,9 +882,10 @@ def screen_images(fp):
         imgs[IMG_WPROG + lv] = bar_frame(lv, WARM_STEPS, WPROG_BOX[0], WPROG_BOX[1], AMBER, 7, False)
     imgs[IMG_WDONE] = bar_frame(WARM_STEPS, WARM_STEPS, WPROG_BOX[0], WPROG_BOX[1], (99, 153, 34, 255), 7, False)
     for li, lang in enumerate(("pl", "en", "zh-CN", "zh-TW")):
+        lf = (cjk_font_for(lang) or fp) if lang in ("zh-CN", "zh-TW") else fp
         for k, t in enumerate(WARM_STATUS_TEXTS[lang]):
             c = Canvas(*WSTATUS_BOX)
-            c.text((0, WSTATUS_BOX[1] / 2.0), t, font(fp, 22), TEXT, "lm")
+            c.text((0, WSTATUS_BOX[1] / 2.0), t, font(lf, 22), TEXT, "lm")
             imgs[IMG_WSTATUS + 10 * li + k] = c.image()
     for si, sep in enumerate((",",)):          # decimal comma in every language (no "." sets)
         for v in range(1000):
@@ -917,8 +918,9 @@ def screen_images(fp):
     for i, ch in enumerate(("▲", "▼")):
         imgs[IMG_SHIFT + i] = number_image(fp, ch, 40, 40, 30, AMBER, "m")
     for li, lang in enumerate(("pl", "en", "zh-CN", "zh-TW")):
+        lf = (cjk_font_for(lang) or fp) if lang in ("zh-CN", "zh-TW") else fp
         for k, t in enumerate(STATUS_TEXTS[lang]):
-            imgs[IMG_STATUS + 10 * li + k] = status_image(fp, t)
+            imgs[IMG_STATUS + 10 * li + k] = status_image(lf, t)
     return imgs
 
 
