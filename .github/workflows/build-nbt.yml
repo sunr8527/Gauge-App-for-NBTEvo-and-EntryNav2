@@ -21,7 +21,7 @@ jobs:
         run: git clone --depth 1 https://github.com/luka-dev/qnx65-armv7-toolchain.git /tmp/qnx-tc
 
       - name: Build the QNX toolchain image (once, slow)
-        run: docker build --platform=linux/amd64 --target base-4.9 -t qnx65-armv7-toolchain /tmp/qnx-tc
+        run: docker build --platform=linux/amd64 --target base-8.5 -t qnx65-armv7-toolchain /tmp/qnx-tc
 
       - name: Build libGaugeApp.so (NBT Evo)
         run: |
